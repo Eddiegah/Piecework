@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, afterEach } from "vitest";
 import { randomBytes } from "node:crypto";
 import { Tracker } from "../tracker.js";
-import { announce } from "../trackerClient.js";
+import { announce, fetchManifestByCode, storeManifest } from "../trackerClient.js";
 
 describe("Tracker + trackerClient (real HTTP round-trip)", () => {
   let tracker: Tracker;
@@ -78,5 +78,49 @@ describe("Tracker + trackerClient (real HTTP round-trip)", () => {
 
     expect(seenByB).toHaveLength(1);
     expect(seenByB[0].peerId).toEqual(peerA);
+  });
+});
+
+describe("Tracker manifest store (the send/get short-code flow)", () => {
+  let tracker: Tracker;
+  let baseUrl: string;
+
+  beforeEach(async () => {
+    tracker = new Tracker();
+    const port = await tracker.listen(0);
+    baseUrl = `http://127.0.0.1:${port}`;
+  });
+
+  afterEach(async () => {
+    await tracker.close();
+  });
+
+  it("returns a share code that round-trips back to the exact original bytes", async () => {
+    const original = Buffer.from("a bencoded manifest would really go here");
+    const code = await storeManifest(baseUrl, original);
+    expect(code).toMatch(/^[a-z]+-[a-z]+-\d{2}$/);
+
+    const fetched = await fetchManifestByCode(baseUrl, code);
+    expect(fetched).toEqual(original);
+  });
+
+  it("gives different manifests different codes", async () => {
+    const codeA = await storeManifest(baseUrl, Buffer.from("manifest A"));
+    const codeB = await storeManifest(baseUrl, Buffer.from("manifest B"));
+    expect(codeA).not.toBe(codeB);
+  });
+
+  it("rejects a lookup for a code that was never stored", async () => {
+    await expect(fetchManifestByCode(baseUrl, "swift-otter-99")).rejects.toThrow();
+  });
+
+  it("rejects a lookup for a code with an invalid shape (path traversal, injection, etc.)", async () => {
+    await expect(fetchManifestByCode(baseUrl, "../../../etc/passwd")).rejects.toThrow();
+  });
+
+  it("preserves arbitrary binary content, not just text", async () => {
+    const original = Buffer.from([0x00, 0xff, 0x10, 0x00, 0xaa, 0xbb, 0x00, 0x00, 0xff]);
+    const code = await storeManifest(baseUrl, original);
+    expect(await fetchManifestByCode(baseUrl, code)).toEqual(original);
   });
 });

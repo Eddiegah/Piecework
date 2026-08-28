@@ -9,6 +9,7 @@
   },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "start": "node dist/src/trackerServer.js",
     "test": "vitest run",
     "lint": "eslint src scripts",
     "demo": "tsx scripts/demo.ts",

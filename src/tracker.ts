@@ -1,5 +1,8 @@
 import { createServer, IncomingMessage, Server, ServerResponse } from "node:http";
 import { bencode } from "./bencode.js";
+import { generateShareCode, isValidShareCode } from "./shareCode.js";
+
+const MAX_MANIFEST_BYTES = 1_000_000; // manifests are small (mostly hashes); this is generous headroom
 
 /** `info_hash` and `peer_id` are raw 20-byte values, not text - the real
  * BitTorrent tracker protocol percent-encodes every byte of them (mapping
@@ -54,10 +57,18 @@ export function buildAnnounceUrl(trackerUrl: string, req: AnnounceRequest): stri
 
 /** A minimal but protocol-faithful HTTP tracker: peers announce themselves
  * per info_hash, and get back a bencoded list of the other peers currently
- * in that same swarm - the tracker itself never touches file data, it only
- * ever does peer discovery. */
+ * in that same swarm - the tracker itself never touches file data for the
+ * transfer itself, it only ever does peer discovery.
+ *
+ * It also runs one small convenience service on top of that: a manifest
+ * store keyed by a short human-readable code, so two people can share a
+ * file by exchanging a code like "swift-otter-42" instead of a raw
+ * .piecework file. This is purely a lookup convenience for the `send`/
+ * `get` CLI commands - the actual file transfer afterward is exactly the
+ * same real peer-to-peer exchange either way. */
 export class Tracker {
   private readonly swarms = new Map<string, Map<string, AnnouncedPeer>>();
+  private readonly manifests = new Map<string, Buffer>();
   private readonly server: Server;
   private port = 0;
 
@@ -65,10 +76,10 @@ export class Tracker {
     this.server = createServer((req, res) => this.handleRequest(req, res));
   }
 
-  listen(port = 0): Promise<number> {
+  listen(port = 0, host = "0.0.0.0"): Promise<number> {
     return new Promise((resolve, reject) => {
       this.server.once("error", reject);
-      this.server.listen(port, "127.0.0.1", () => {
+      this.server.listen(port, host, () => {
         const address = this.server.address();
         this.port = typeof address === "object" && address ? address.port : port;
         resolve(this.port);
@@ -88,12 +99,52 @@ export class Tracker {
 
   private handleRequest(req: IncomingMessage, res: ServerResponse): void {
     const url = req.url ?? "/";
-    if (!url.startsWith("/announce")) {
+    const method = req.method ?? "GET";
+
+    if (url.startsWith("/announce")) return this.handleAnnounce(url, req, res);
+    if (method === "POST" && url === "/manifest") return this.handleStoreManifest(req, res);
+    if (method === "GET" && url.startsWith("/manifest/")) return this.handleFetchManifest(url, res);
+
+    res.writeHead(404);
+    res.end();
+  }
+
+  private handleStoreManifest(req: IncomingMessage, res: ServerResponse): void {
+    const chunks: Buffer[] = [];
+    let total = 0;
+    req.on("data", (chunk: Buffer) => {
+      total += chunk.length;
+      if (total > MAX_MANIFEST_BYTES) {
+        res.writeHead(413);
+        res.end();
+        req.destroy();
+        return;
+      }
+      chunks.push(chunk);
+    });
+    req.on("end", () => {
+      if (res.writableEnded) return;
+      const body = Buffer.concat(chunks);
+      let code = generateShareCode();
+      while (this.manifests.has(code)) code = generateShareCode(); // vanishingly rare, but stay correct
+      this.manifests.set(code, body);
+      res.writeHead(200, { "Content-Type": "text/plain" });
+      res.end(code);
+    });
+  }
+
+  private handleFetchManifest(url: string, res: ServerResponse): void {
+    const code = url.substring("/manifest/".length).split("?")[0];
+    if (!isValidShareCode(code) || !this.manifests.has(code)) {
       res.writeHead(404);
-      res.end();
+      res.end("no manifest found for that code");
       return;
     }
+    res.writeHead(200, { "Content-Type": "application/octet-stream" });
+    res.end(this.manifests.get(code));
+  }
 
+  private handleAnnounce(url: string, req: IncomingMessage, res: ServerResponse): void {
     const infoHashRaw = extractRawQueryValue(url, "info_hash");
     const peerIdRaw = extractRawQueryValue(url, "peer_id");
     const params = new URL(url, "http://127.0.0.1");

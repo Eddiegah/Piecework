@@ -34,3 +34,27 @@ export async function announce(trackerUrl: string, req: AnnounceRequest): Promis
     return { peerId, ip: ip.toString("utf8"), port };
   });
 }
+
+export function announceUrlFor(trackerBaseUrl: string): string {
+  return `${trackerBaseUrl.replace(/\/$/, "")}/announce`;
+}
+
+/** Uploads a manifest to the tracker's small convenience store and gets
+ * back a short shareable code - what makes `piecework send` a one-command
+ * "here's a code, tell your friend" flow instead of needing to hand
+ * someone an actual .piecework file. */
+export async function storeManifest(trackerBaseUrl: string, manifestBytes: Buffer): Promise<string> {
+  const res = await fetch(`${trackerBaseUrl.replace(/\/$/, "")}/manifest`, {
+    method: "POST",
+    body: new Uint8Array(manifestBytes),
+    headers: { "Content-Type": "application/octet-stream" },
+  });
+  if (!res.ok) throw new Error(`tracker rejected the manifest upload (HTTP ${res.status})`);
+  return (await res.text()).trim();
+}
+
+export async function fetchManifestByCode(trackerBaseUrl: string, code: string): Promise<Buffer> {
+  const res = await fetch(`${trackerBaseUrl.replace(/\/$/, "")}/manifest/${encodeURIComponent(code)}`);
+  if (!res.ok) throw new Error(`no manifest found for code "${code}" (HTTP ${res.status}) - check it was typed correctly`);
+  return Buffer.from(await res.arrayBuffer());
+}

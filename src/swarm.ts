@@ -13,8 +13,13 @@ import { PEER_ID_LENGTH } from "./wireProtocol.js";
 export interface PeerNodeOptions {
   manifest: Manifest;
   trackerUrl: string;
-  /** Own TCP listening port - other peers connect here to trade pieces. */
-  port: number;
+  /** Own TCP listening port - other peers connect here to trade pieces.
+   * Omit or pass 0 to let the OS pick a free port automatically. */
+  port?: number;
+  /** Interface to listen on. Defaults to every interface ("0.0.0.0"), so
+   * peers on the same network - not just the same machine - can actually
+   * reach this node. Pass "127.0.0.1" to restrict to localhost-only. */
+  host?: string;
   /** If provided, this node starts as a complete seeder with this exact
    * file data (its hash MUST match the manifest). If omitted, it starts
    * empty, as a leecher with nothing to serve yet. */
@@ -42,6 +47,7 @@ export class PeerNode extends EventEmitter {
   private readonly peers = new Map<string, PeerState>();
   private server: Server | null = null;
   private announceTimer: ReturnType<typeof setInterval> | null = null;
+  private listeningPort = 0;
 
   constructor(private readonly opts: PeerNodeOptions) {
     super();
@@ -61,6 +67,13 @@ export class PeerNode extends EventEmitter {
         setBit(this.bitfield, i);
       }
     }
+  }
+
+  /** The actual port this node ended up listening on - only meaningful
+   * after start() resolves. Equal to opts.port unless it was 0/omitted,
+   * in which case this is whatever free port the OS assigned. */
+  get port(): number {
+    return this.listeningPort;
   }
 
   get pieceCount(): number {
@@ -94,9 +107,12 @@ export class PeerNode extends EventEmitter {
     if (this.announceTimer) clearInterval(this.announceTimer);
     for (const peer of this.peers.values()) peer.conn.destroy();
     this.peers.clear();
-    await announce(this.opts.trackerUrl, { infoHash: this.infoHash, peerId: this.peerId, port: this.opts.port, event: "stopped" }).catch(
-      () => {}
-    );
+    await announce(this.opts.trackerUrl, {
+      infoHash: this.infoHash,
+      peerId: this.peerId,
+      port: this.listeningPort,
+      event: "stopped",
+    }).catch(() => {});
     await new Promise<void>((resolve) => this.server?.close(() => resolve()));
   }
 
@@ -104,12 +120,21 @@ export class PeerNode extends EventEmitter {
     return new Promise((resolve, reject) => {
       this.server = createServer((socket) => this.acceptIncoming(socket));
       this.server.once("error", reject);
-      this.server.listen(this.opts.port, "127.0.0.1", () => resolve());
+      this.server.listen(this.opts.port ?? 0, this.opts.host ?? "0.0.0.0", () => {
+        const address = this.server!.address();
+        this.listeningPort = typeof address === "object" && address ? address.port : (this.opts.port ?? 0);
+        resolve();
+      });
     });
   }
 
   private async announceAndConnect(event?: "started" | "stopped" | "completed"): Promise<void> {
-    const peers = await announce(this.opts.trackerUrl, { infoHash: this.infoHash, peerId: this.peerId, port: this.opts.port, event });
+    const peers = await announce(this.opts.trackerUrl, {
+      infoHash: this.infoHash,
+      peerId: this.peerId,
+      port: this.listeningPort,
+      event,
+    });
     for (const peer of peers) this.connectToPeer(peer);
   }
 
