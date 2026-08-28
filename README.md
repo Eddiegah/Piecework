@@ -9,7 +9,20 @@ sockets between independent processes.
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript&logoColor=white)](tsconfig.json)
 [![Node.js](https://img.shields.io/badge/Node.js-22-339933?logo=node.js&logoColor=white)](package.json)
-[![Cost to run](https://img.shields.io/badge/cost%20to%20run-%240-brightgreen)](#quick-start)
+[![Zero torrent deps](https://img.shields.io/badge/torrent%20libraries%20used-zero-blue)](package.json)
+[![Cost to run](https://img.shields.io/badge/cost%20to%20run-%240-brightgreen)](#try-it-yourself)
+
+## Contents
+
+- [Why this exists](#why-this-exists)
+- [The proof: a real swarm, not a description of one](#the-proof-a-real-swarm-not-a-description-of-one)
+- [Try it yourself](#try-it-yourself)
+- [Architecture](#architecture)
+- [How a transfer actually happens](#how-a-transfer-actually-happens)
+- [Proof this is correct, not just pretty](#proof-this-is-correct-not-just-pretty)
+- [Command reference](#command-reference)
+- [Explicitly simplified for v1](#explicitly-simplified-for-v1)
+- [License](#license)
 
 ## Why this exists
 
@@ -17,6 +30,8 @@ sockets between independent processes.
 demonstrated* skills in a portfolio. Piecework is the demonstration: every piece of the actual
 BitTorrent protocol that makes a swarm work - not a toy approximation of it - built from the
 ground up in TypeScript with no third-party torrent library anywhere in the dependency tree.
+`commander` (CLI argument parsing) is the only runtime dependency; the protocol itself -
+bencoding, hashing, the tracker, the wire format, the swarm logic - is all original code.
 
 ## The proof: a real swarm, not a description of one
 
@@ -24,14 +39,17 @@ ground up in TypeScript with no third-party torrent library anywhere in the depe
 a complete file, three leechers starting from zero - lets them discover each other and trade
 pieces over genuine TCP sockets, then verifies every leecher reassembled the file byte-for-byte
 identical to the original, having only ever received it in independently hash-checked pieces
-from whichever peer happened to have them (seeder *or* a fellow leecher). This exact run is
-also wired into CI, so it re-proves itself on every push, not just once in a README.
+from whichever peer happened to have them (seeder *or* a fellow leecher). This exact run is also
+wired into [CI](https://github.com/Eddiegah/Piecework/actions/workflows/ci.yml), so it re-proves
+itself on every push, on a machine that's never seen this code before - not just once in a
+README. Actual captured output below (the test file is fresh random bytes each run, so the hash
+will differ if you run it yourself - that's expected, not a typo):
 
 ```
 Piecework demo — a real multi-peer file transfer over the actual BitTorrent wire protocol
 
 Test file:  200,000 random bytes, sha1 ec369fd6413ce6d55a9612661661d85d8f1c9983
-Tracker:    listening on 127.0.0.1:xxxxx
+Tracker:    listening on 127.0.0.1:64503
 Manifest:   13 pieces, up to 16,384 bytes each
 
 Seeder online   (127.0.0.1:9001) — starts at 100%
@@ -41,6 +59,8 @@ Leecher 3 online  (127.0.0.1:9004) — starts at 0%
 
 Trading pieces...
 
+  13/13 seeder   leecher 1: 2/13   leecher 2: 3/13   leecher 3: 4/13
+  13/13 seeder   leecher 1: 9/13   leecher 2: 9/13   leecher 3: 9/13
   13/13 seeder   leecher 1: 13/13   leecher 2: 13/13   leecher 3: 13/13
 
 All leechers report complete. Verifying byte-for-byte against the original...
@@ -53,14 +73,44 @@ PASS — every leecher reassembled the exact original file, byte for byte, using
 traded peer-to-peer.
 ```
 
-It also works as a genuinely separate-process CLI - not just an in-process demo. In three
-different terminals:
+Notice the middle progress line: leechers 1/2/3 sit at uneven 2/3/4 pieces, not identical counts
+in lockstep - that unevenness is what real peer-to-peer looks like (peers trading with whichever
+neighbor answers first) as opposed to three clients all just downloading from one server at the
+same speed.
+
+## Try it yourself
+
+No build step needed to run the demo or the tests - `tsx` runs the TypeScript directly:
 
 ```bash
-piecework tracker --port 6969
-piecework seed ./movie.mp4 movie.mp4.piecework --port 9001
-piecework leech movie.mp4.piecework ./downloaded.mp4 --port 9002
+git clone https://github.com/Eddiegah/Piecework.git
+cd Piecework
+npm install
+npm test          # 63 tests, no network needed
+npm run demo       # the real thing: a live 4-peer swarm, verified end to end
 ```
+
+To use it as an actual CLI tool against a real file, across three separate terminals (this is
+genuinely three independent OS processes talking over real TCP sockets, not a simulation):
+
+```bash
+# terminal 1 - build once, then start a tracker
+npm run build
+npx piecework tracker --port 6969
+
+# terminal 2 - create a manifest for a real file, then seed it
+npx piecework create ./photo.jpg --tracker http://127.0.0.1:6969/announce
+npx piecework seed ./photo.jpg ./photo.jpg.piecework --port 9001
+
+# terminal 3 - download it from the swarm, verifying every piece as it arrives
+npx piecework leech ./photo.jpg.piecework ./downloaded.jpg --port 9002
+
+# then check they're identical
+diff ./photo.jpg ./downloaded.jpg && echo "byte-for-byte identical"
+```
+
+(Prefer a global `piecework` command instead of `npx piecework` in each terminal? Run
+`npm link` once after `npm run build` and use `piecework ...` directly.)
 
 ## Architecture
 
@@ -87,8 +137,44 @@ src/
                         received piece's hash before accepting it, and serves pieces it has to
                         anyone who asks
   cli.ts                  a real command-line tool: tracker / create / seed / leech
-scripts/demo.ts            the end-to-end proof described above
+scripts/demo.ts            the end-to-end proof shown above
 ```
+
+## How a transfer actually happens
+
+```
+   PEER A (has the file)                          PEER B (wants the file)
+        |                                                  |
+        |  1. both announce to the tracker, by info_hash   |
+        |------------------->  TRACKER  <-------------------|
+        |            (bencoded peer list back)               |
+        |                                                  |
+        |  2. B opens a TCP connection to A                |
+        |<----------------- handshake -------------------->|
+        |     (pstr "BitTorrent protocol" + info_hash       |
+        |      + peer_id, both directions)                 |
+        |                                                  |
+        |------------------ bitfield ---------------------->|  "here's what I have"
+        |<----------------- bitfield ------------------------|  "here's what I have"
+        |                                                  |
+        |<----------------- interested -----------------------|
+        |------------------- unchoke ----------------------->|
+        |                                                  |
+        |<------------------ request(i) -----------------------|  "send me piece i"
+        |-------------------- piece(i) ---------------------->|  the actual bytes
+        |                                                  |
+        |                                    B computes SHA-1(piece i)
+        |                                    and checks it against the
+        |                                    manifest's recorded hash
+        |                                    for that index. Mismatch?
+        |                                    Discard it, ask someone else.
+        |                                                  |
+        |<-------------------- have(i) ----------------------->|  B tells everyone it now has piece i
+```
+
+The same loop runs between every pair of connected peers simultaneously - which is exactly how
+leecher-to-leecher trading happens in the demo above, with no seeder involved for that specific
+exchange.
 
 ## Proof this is correct, not just pretty
 
@@ -116,13 +202,14 @@ integrity silently:
   corruption - the exact bug class that shows up if you reach for `URLSearchParams` here instead
   of handling the encoding by hand.
 
-## Quick start
+## Command reference
 
-```bash
-npm install
-npm test          # 63 tests, no network needed
-npm run demo       # the real thing: a live 4-peer swarm, verified end to end
-```
+| Command | Description | Options |
+|---|---|---|
+| `piecework tracker` | Runs an HTTP tracker peers announce to | `-p, --port <port>` (default `6969`) |
+| `piecework create <file>` | Builds a `<file>.piecework` manifest | `--tracker <url>` (default `http://127.0.0.1:6969/announce`), `--piece-length <bytes>` (default `16384`) |
+| `piecework seed <file> <manifest>` | Serves a complete file into its swarm | `-p, --port <port>` (default `9001`) |
+| `piecework leech <manifest> <output>` | Downloads a file from its swarm, verifying every piece | `-p, --port <port>` (default `9002`) |
 
 ## Explicitly simplified for v1
 
