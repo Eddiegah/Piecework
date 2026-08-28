@@ -1,0 +1,29 @@
+{
+  "name": "piecework",
+  "version": "0.1.0",
+  "private": true,
+  "description": "A real peer-to-peer file-sharing protocol, implemented from scratch: bencoding, SHA-1 piece verification, a tracker, and the BitTorrent peer wire protocol.",
+  "type": "module",
+  "bin": {
+    "piecework": "./dist/cli.js"
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run",
+    "lint": "eslint src scripts",
+    "demo": "tsx scripts/demo.ts",
+    "cli": "tsx src/cli.ts"
+  },
+  "dependencies": {
+    "commander": "^12.1.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.15.0",
+    "@types/node": "^20.14.0",
+    "eslint": "^9.15.0",
+    "typescript-eslint": "^8.15.0",
+    "tsx": "^4.19.0",
+    "typescript": "^5.6.0",
+    "vitest": "^4.1.0"
+  }
+}
