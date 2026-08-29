@@ -41,11 +41,107 @@ Connecting to peers and downloading...
 Saved photo.jpg
 ```
 
-That's the whole product experience. Everything below is what's actually happening underneath
-it, and the proof that it's real.
+That's the whole product experience. If you've never opened a terminal before, the next section
+walks through every step with nothing assumed. If you're already comfortable with a command
+line, skip straight to [Contents](#contents) - everything below that is what's actually
+happening underneath it, and the proof that it's real.
+
+## Never used a terminal before? Start here.
+
+You don't need to know how to code to use this. It takes about 5 minutes the first time (mostly
+installing one free program) and about 10 seconds every time after that. No account, no sign-up,
+nothing to pay.
+
+**What a "terminal" is**, if that word is new: it's a plain window where you type a line of text
+and press Enter instead of clicking buttons. Every computer already has one built in - you're
+not installing anything unusual by opening it.
+
+### Step 1 - Install Node.js (one time only)
+
+Piecework runs on a free tool called Node.js. If a friend already had you install it for
+something else, skip to Step 2.
+
+1. Go to **[nodejs.org](https://nodejs.org)**
+2. Click the big download button (it recommends the "LTS" version - that's the right one)
+3. Open the downloaded file and click through the installer - the default options are fine,
+   just keep clicking "Next" / "Install"
+
+That's the only installation step, and you won't need to repeat it.
+
+### Step 2 - Open a terminal
+
+- **Windows**: press the Windows key, type `PowerShell`, press Enter
+- **Mac**: press `Cmd + Space`, type `Terminal`, press Enter
+- **Linux**: you likely already know this - `Ctrl + Alt + T` usually works
+
+A window with a blinking cursor opens. That's it, that's the terminal.
+
+### Step 3 - Send a file
+
+Type `npx piecework send `, leave a space after it, then **drag the file itself** from a folder
+window straight into the terminal - that automatically fills in the correct path so you don't
+have to type it by hand. It'll look something like this:
+
+```bash
+npx piecework send "C:\Users\YourName\Desktop\photo.jpg"
+```
+
+Press Enter. The very first time, it takes a few extra seconds to fetch the tool - that's
+normal and only happens once. Then you'll see something like:
+
+```
+Share this code:  swift-otter-42
+```
+
+That three-word-and-two-number code is what you send to your friend - text it, WhatsApp it,
+say it out loud, however you'd normally reach them.
+
+**Leave this window open.** Your file is being sent directly from your computer to theirs, with
+nothing in between - so this window has to stay open (minimizing is fine) until they've finished
+downloading. Closing it is like hanging up the phone mid-sentence.
+
+### Step 4 - Receive a file
+
+Your friend opens their own terminal (Step 2, on their computer) and types:
+
+```bash
+npx piecework get swift-otter-42
+```
+
+using the actual code you sent them. A few seconds later, the file shows up in the folder the
+terminal opened in - usually their user folder (things like `C:\Users\TheirName` on Windows, or
+their home folder on Mac/Linux).
+
+### Common questions
+
+**"npx: command not found" or "npx is not recognized"**
+Node.js isn't installed yet, or the terminal was already open when you installed it. Go back to
+Step 1, then close and reopen the terminal.
+
+**The receiving side just sits there and nothing happens**
+This works instantly when both people are on the same WiFi. Sending across the internet to
+someone on a *different* network (a different house, a different city) usually needs the
+sender's router configured to allow the connection through - that's just how direct,
+server-free file transfer works, not something broken on your end. If that's not practical, the
+easiest fix is using it while you're actually on the same WiFi (e.g. sharing something with
+someone sitting next to you).
+
+**Is this safe? Can anyone else see my file?**
+No one except the person you give the code to can get your file. It travels directly from your
+computer to theirs - never through a server, never stored anywhere. The only thing that ever
+touches a server is the short code itself, which is just used to help your friend's computer
+find yours; your actual file content is never uploaded anywhere.
+
+**Do I need to create an account, or will this cost me anything?**
+No account, ever. Completely free, for any size file.
+
+**Something else went wrong**
+Open an issue at [github.com/Eddiegah/Piecework/issues](https://github.com/Eddiegah/Piecework/issues)
+with what you typed and what happened - happy to help.
 
 ## Contents
 
+- [Never used a terminal before? Start here.](#never-used-a-terminal-before-start-here)
 - [Why this exists](#why-this-exists)
 - [The proof: a real swarm, not a description of one](#the-proof-a-real-swarm-not-a-description-of-one)
 - [The public tracker](#the-public-tracker)
@@ -56,6 +152,11 @@ it, and the proof that it's real.
 - [Command reference](#command-reference)
 - [Explicitly simplified for v1](#explicitly-simplified-for-v1)
 - [License](#license)
+
+---
+
+*Everything from here down is the technical write-up - how it works, why it's real, and how it's
+tested. Nothing further to read if you just wanted to send a file.*
 
 ## Why this exists
 
