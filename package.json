@@ -1,14 +1,42 @@
 {
   "name": "piecework",
   "version": "0.1.0",
-  "private": true,
-  "description": "A real peer-to-peer file-sharing protocol, implemented from scratch: bencoding, SHA-1 piece verification, a tracker, and the BitTorrent peer wire protocol.",
+  "description": "Share a file with anyone in one command. A real peer-to-peer file-sharing protocol, implemented from scratch: bencoding, SHA-1 piece verification, a tracker, and the actual BitTorrent peer wire protocol (BEP 3).",
   "type": "module",
+  "license": "MIT",
+  "author": "Edmund Eric Gah",
+  "homepage": "https://github.com/Eddiegah/Piecework#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/Eddiegah/Piecework.git"
+  },
+  "bugs": {
+    "url": "https://github.com/Eddiegah/Piecework/issues"
+  },
+  "keywords": [
+    "bittorrent",
+    "peer-to-peer",
+    "p2p",
+    "file-sharing",
+    "torrent",
+    "bencode",
+    "cli",
+    "tcp",
+    "protocol"
+  ],
   "bin": {
     "piecework": "./dist/src/cli.js"
   },
+  "files": [
+    "dist/src/*.js",
+    "dist/src/*.js.map"
+  ],
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
     "build": "tsc -p tsconfig.json",
+    "prepublishOnly": "npm run build",
     "start": "node dist/src/trackerServer.js",
     "test": "vitest run",
     "lint": "eslint src scripts",
