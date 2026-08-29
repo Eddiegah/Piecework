@@ -9,7 +9,7 @@ import { announceUrlFor, fetchManifestByCode, storeManifest } from "./trackerCli
 import { getLanAddress } from "./network.js";
 
 const DEFAULT_LOCAL_TRACKER = "http://127.0.0.1:6969";
-const DEFAULT_PUBLIC_TRACKER = process.env.PIECEWORK_TRACKER ?? "https://piecework-tracker.onrender.com";
+const DEFAULT_PUBLIC_TRACKER = process.env.PIECEWORK_TRACKER ?? "https://piecework.onrender.com";
 const DEFAULT_PIECE_LENGTH = 16384;
 
 const NETWORK_NOTE =
@@ -63,7 +63,13 @@ program
       await writeFile(outputPath, data);
       console.log(`\nSaved ${outputPath}`);
       await node.stop();
-      process.exitCode = 0;
+      // By this point every socket this process opened has been closed and
+      // awaited - the only thing left alive is Node's own fetch() keep-alive
+      // connection to the tracker, which there's no public API to close.
+      // process.exitCode alone would leave the process hanging on that; a
+      // forced exit() here is safe (unlike inside PeerNode.stop() itself)
+      // because nothing is still mid-teardown.
+      process.exit(0);
     });
     await node.start();
   });
@@ -127,7 +133,7 @@ program
       await writeFile(output, data);
       console.log(`\nSaved ${output}`);
       await node.stop();
-      process.exitCode = 0;
+      process.exit(0); // see the comment on the same pattern in the `get` command above
     });
     await node.start();
   });

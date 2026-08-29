@@ -115,11 +115,17 @@ same speed.
 
 ## The public tracker
 
-`send`/`get` default to a small tracker I run so two people don't each need to stand one up
-themselves - it only ever does peer discovery and stores tiny manifest files (mostly just SHA-1
-hashes) under short codes; **it never sees, stores, or relays any actual file content**, exactly
-like a real BitTorrent tracker. Source for it is the same `src/tracker.ts` in this repo - nothing
-hidden, nothing different from what you can run yourself.
+`send`/`get` default to **[piecework.onrender.com](https://piecework.onrender.com)**, a small
+tracker I run so two people don't each need to stand one up themselves - it only ever does peer
+discovery and stores tiny manifest files (mostly just SHA-1 hashes) under short codes;
+**it never sees, stores, or relays any actual file content**, exactly like a real BitTorrent
+tracker. Source for it is the same `src/tracker.ts` in this repo (run as the standalone
+`src/trackerServer.ts` entry point) - nothing hidden, nothing different from what you can run
+yourself.
+
+It's genuinely been end-to-end tested against this exact deployment, not just localhost: a real
+`send` on one machine, a real `get` on another process reading the code back from
+piecework.onrender.com over the open internet, landing on a byte-for-byte identical SHA-1.
 
 Two things worth knowing:
 - **Same WiFi/network: works with zero configuration**, every time.
@@ -128,6 +134,9 @@ Two things worth knowing:
   BitTorrent has the same issue without UPnP/DHT, neither of which this implements) - not
   something the public tracker can paper over, since it only ever does introductions, never
   relays data.
+- It's hosted on Render's free tier, which sleeps after ~15 minutes idle - the very first
+  `send`/`get` after a quiet period can take 30-50 seconds to respond while it wakes up; after
+  that it's instant.
 
 ## Running it yourself, without the public tracker
 
